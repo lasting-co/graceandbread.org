@@ -42,29 +42,31 @@
   function plain(s) { return String(s || "").replace(/<[^>]*>/g, "").replace(/^\d+\s*-\s*/, "").trim(); }
 
   // ------------------------------------ Get Involved form → info@showgrace.org
-  // Posts to FormSubmit, which emails the submission. Without JavaScript the
-  // browser posts normally and lands on /thank-you/.
-  document.querySelectorAll("form[data-formsubmit]").forEach(function (form) {
+  // Sends to Formspree, which emails each message to info@showgrace.org and
+  // keeps a copy in the Formspree dashboard.
+  document.querySelectorAll("form[data-contact]").forEach(function (form) {
     form.addEventListener("submit", function (e) {
-      if (!window.fetch) return;
       e.preventDefault();
       var btn = form.querySelector("button[type=submit]"), label = btn.textContent;
       var status = form.querySelector(".form__status"), done = form.parentNode.querySelector(".form__done");
-      busy(btn, true); status.textContent = ""; status.removeAttribute("data-state");
-      var data = {}; new FormData(form).forEach(function (v, k) { data[k] = v; });
-      fetch(form.action.replace("formsubmit.co/", "formsubmit.co/ajax/"), {
-        method: "POST", headers: { "Content-Type": "application/json", Accept: "application/json" }, body: JSON.stringify(data)
-      })
-        .then(function (r) { return r.json().then(function (j) { return { ok: r.ok, body: j }; }); })
-        .then(function (res) {
-          if (!res.ok || String(res.body.success) !== "true") throw new Error("failed");
-          form.hidden = true; done.hidden = false; done.focus();
+      status.textContent = ""; status.removeAttribute("data-state");
+      if (form.action.indexOf("YOUR-FORM-ID") !== -1) {
+        status.setAttribute("data-state", "error");
+        status.textContent = "This form isn’t connected yet. Please email info@showgrace.org.";
+        return;
+      }
+      busy(btn, true);
+      fetch(form.action, { method: "POST", body: new FormData(form), headers: { Accept: "application/json" } })
+        .then(function (r) {
+          if (r.ok) { form.hidden = true; done.hidden = false; done.focus(); return; }
+          return r.json().then(function (j) {
+            busy(btn, false, label);
+            status.setAttribute("data-state", "error");
+            status.textContent = (j.errors && j.errors.map(function (x) { return x.message; }).join(" ")) ||
+              "That didn’t go through. Try again, or email info@showgrace.org.";
+          });
         })
-        .catch(function () {
-          busy(btn, false, label);
-          status.setAttribute("data-state", "error");
-          status.textContent = "That didn’t go through. Try again, or email info@showgrace.org.";
-        });
+        .catch(function () { form.submit(); });   // network hiccup: send it the standard way
     });
   });
 
